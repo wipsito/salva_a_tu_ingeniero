@@ -1,0 +1,1413 @@
+<!DOCTYPE html>
+<html lang="es">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>SANLVA A TU INGENIERO</title>
+    <script src="https://cdn.tailwindcss.com"></script>
+    <style>
+        @import url('https://fonts.googleapis.com/css2?family=Press+Start+2P&display=swap');
+        * {
+            image-rendering: pixelated;
+            image-rendering: crisp-edges;
+            margin: 0;
+            padding: 0;
+            box-sizing: border-box;
+        }
+    </style>
+    <script>
+        tailwind.config = {
+            theme: {
+                extend: {
+                    colors: {
+                        fondoCielo: '#1A1A33',
+                        gradienteAbajo: '#603070',
+                        montana: '#253040',
+                        sueloCamino: '#5D6D7E',
+                        bordeSuelo: '#34495E',
+                        maqAmarilloBase: '#FFCB00',
+                        maqAmarilloClaro: '#FFE04D',
+                        maqAmarilloOscuro: '#E69E00',
+                        maqAzul: '#0077ED',
+                        maqGris: '#888888',
+                        maqGrisOscuro: '#2A2A2A',
+                        maqNegro: '#121212',
+                        colorPilar: '#E67E22',
+                    },
+                    fontFamily: {
+                        pixel: ['"Press Start 2P"', 'monospace'],
+                    },
+                }
+            }
+        }
+    </script>
+</head>
+<body class="bg-fondoCielo font-pixel overflow-hidden relative">
+    <canvas id="escenario" width="1280" height="720" class="w-screen h-screen"></canvas>
+    
+    <!-- AQUÍ ESTÁ LA BARRA DE CARGA, TAL COMO LA TENÍAS -->
+    <div id="capaTransicion" class="fixed inset-0 bg-black opacity-0 transition-all duration-500 ease-in-out z-10 flex flex-col items-center justify-center gap-8" style="pointer-events: none;">
+        <canvas id="ingeCorriendoCanvas" width="60" height="80" class="mb-10" style="image-rendering: pixelated;"></canvas>
+        <div id="textoCarga" class="text-white text-xl">CARGANDO...</div>
+        <div class="w-64 h-6 border-2 border-white overflow-hidden">
+            <div id="barraProgreso" class="h-full bg-yellow-400 w-0 transition-all duration-100 ease-linear"></div>
+        </div>
+    </div>
+
+    <div id="menuPausa" class="hidden absolute top-1/2 left-1/2 -translate-x-1/2 -translate-y-1/2 bg-black/80 border-4 border-yellow-400 p-6 rounded-lg shadow-lg text-center z-20">
+        <p class="text-yellow-400 text-lg mb-4">JUEGO PAUSADO</p>
+        <button id="btnSalirMenu" class="bg-red-600 hover:bg-red-700 text-white px-4 py-2 rounded text-sm transition-colors">
+            Salir al menú principal
+        </button>
+    </div>
+
+    <!-- Campo de respuesta para problemas -->
+    <div id="campoRespuesta" class="hidden absolute z-30 bg-white/95 p-4 rounded-lg border-4 border-blue-800" style="right: 20px; top: 50px;">
+        <label class="block text-gray-800 font-bold mb-2">Tu respuesta (forma C₁x+C₂):</label>
+        <input type="text" id="inputRespuesta" 
+            class="px-4 py-3 text-lg font-bold border-2 border-gray-400 rounded-lg w-72 focus:outline-none focus:border-blue-600"
+            placeholder="Ej: mx+b"
+            autocomplete="off">
+        <div class="flex gap-2 mt-2">
+            <button id="btnVerificar" onclick="verificarRespuesta()" 
+                class="px-6 py-2 bg-green-600 hover:bg-green-700 text-white font-bold rounded-lg transition-colors">
+                Verificar
+            </button>
+            <button onclick="cerrarRespuesta()" 
+                class="px-4 py-2 bg-red-500 hover:bg-red-600 text-white font-bold rounded-lg transition-colors">
+                Cerrar
+            </button>
+        </div>
+        <div id="resultadoRespuesta" class="mt-3 text-xl font-bold text-center min-h-[30px]"></div>
+    </div>
+
+    <script>
+        // Variables para el sistema de respuestas
+        let respuestaCorrecta = '';
+        let escenaActualProblema = '';
+        let problemaVisible = false;
+        // ============================================
+        // SISTEMA DE SONIDOS Y MÚSICA (Estilo Mario Bros)
+        // ============================================
+        let audioCtx = null;
+        let musicaActual = null;
+        let notaActual = 0;
+        let enCarga = false;
+        
+        // Notas musicales estilo Mario Bros (frecuencias en Hz)
+        const notasMario = {
+            // Escena inicio - Intro épica estilo Super Mario Bros (tema completo)
+            inicio: [523, 0, 523, 0, 523, 0, 523, 0, 392, 0, 0, 0, 523, 0, 659, 784, 
+                     659, 659, 659, 659, 659, 523, 523, 523, 659, 0, 0, 0, 784, 0, 0, 0,
+                     523, 523, 587, 659, 523, 659, 784, 0, 659, 523, 587, 659, 523, 659, 784, 0,
+                     523, 523, 587, 659, 523, 659, 784, 0, 659, 523, 587, 659, 784, 784, 784, 740,
+                     698, 659, 523, 659, 784, 0, 659, 523, 659, 523, 659, 784, 698, 659, 523, 659,
+                     523, 523, 587, 659, 523, 659, 784, 0, 659, 523, 659, 523, 659, 523, 659, 784,
+                     784, 784, 784, 740, 698, 659, 698, 659, 587, 0, 0, 523, 659, 784, 698, 659,
+                     523, 523, 523, 523, 587, 659, 784, 0, 659, 523, 659, 523, 659, 523, 659, 0],
+            // Escena 1 - Exploración (Underworld/Underwater mix)
+            escena1: [392, 294, 392, 523, 659, 523, 392, 659, 784, 880, 784, 659, 587, 523, 659, 523,
+                     392, 330, 392, 523, 659, 523, 392, 659, 784, 880, 784, 659, 698, 659, 523, 494],
+            // Escena 4 - Estudio 1 (Star Power)
+            escena4: [392, 392, 392, 311, 392, 784, 0, 392, 523, 659, 784, 659, 523, 494, 466, 523,
+                     587, 698, 784, 880, 784, 659, 587, 523, 494, 523, 392, 330, 392, 523, 494, 440,
+                     392, 392, 392, 311, 392, 784, 0, 392, 523, 659, 784, 659, 523, 494, 466, 523],
+            // Escena 5 - Estudio 2 (Athletic)
+            escena5: [523, 523, 523, 392, 523, 440, 392, 523, 587, 659, 523, 440, 392, 494, 523, 587,
+                     659, 698, 659, 523, 587, 523, 494, 440, 523, 523, 523, 392, 523, 440, 392, 523,
+                     784, 659, 523, 587, 659, 698, 659, 523, 587, 523, 494, 440, 523, 523, 523, 392],
+            // Escena 6 - Estudio 3 (Castle theme mix)
+            escena6: [392, 440, 494, 523, 494, 440, 392, 330, 349, 392, 440, 392, 349, 330, 294, 330,
+                     392, 440, 494, 523, 494, 440, 392, 523, 587, 659, 523, 494, 440, 392, 349, 392,
+                     392, 440, 494, 523, 494, 440, 392, 330, 349, 392, 440, 392, 349, 330, 294, 330]
+        };
+        
+        function initAudio() {
+            if (!audioCtx) {
+                audioCtx = new (window.AudioContext || window.webkitAudioContext)();
+            }
+        }
+        
+        function detenerMusica() {
+            if (musicaActual) {
+                clearInterval(musicaActual);
+                musicaActual = null;
+            }
+        }
+        
+        function reproducirNotaMario(frecuencia, duracion, volumen) {
+            if (!audioCtx || enCarga || frecuencia === 0) return;
+            
+            const osc = audioCtx.createOscillator();
+            const gain = audioCtx.createGain();
+            
+            osc.type = 'square'; // Sonido característico de Mario
+            osc.frequency.setValueAtTime(frecuencia, audioCtx.currentTime);
+            
+            gain.gain.setValueAtTime(volumen || 0.06, audioCtx.currentTime);
+            gain.gain.exponentialRampToValueAtTime(0.01, audioCtx.currentTime + duracion * 0.9);
+            
+            osc.connect(gain);
+            gain.connect(audioCtx.destination);
+            
+            osc.start();
+            osc.stop(audioCtx.currentTime + duracion);
+        }
+        
+        function iniciarMusica(tipo) {
+            if (!audioCtx || enCarga) return;
+            
+            detenerMusica();
+            notaActual = 0;
+            
+            const secuencia = notasMario[tipo] || notasMario.inicio;
+            let duracion = (tipo === 'inicio') ? 0.15 : 0.12; // Intro más lenta y épica
+            
+            musicaActual = setInterval(() => {
+                if (!audioCtx || enCarga) return;
+                let volumen = 0.05;
+                // Efecto crescendo en la intro para que sea más épica
+                if (tipo === 'inicio' && notaActual < 16) {
+                    volumen = 0.03 + (notaActual * 0.003);
+                }
+                reproducirNotaMario(secuencia[notaActual], duracion, volumen);
+                notaActual = (notaActual + 1) % secuencia.length;
+            }, duracion * 1000);
+        }
+	initAudio();
+	iniciarMusica('inicio'); 
+        function playSound(type) {
+            initAudio();
+            if (!audioCtx) return;
+            
+            const oscillator = audioCtx.createOscillator();
+            const gainNode = audioCtx.createGain();
+            
+            oscillator.connect(gainNode);
+            gainNode.connect(audioCtx.destination);
+            
+            const now = audioCtx.currentTime;
+            
+            switch(type) {
+                case 'enter':
+                    // Sonido de enter - tono ascendente corto
+                    oscillator.type = 'square';
+                    oscillator.frequency.setValueAtTime(400, now);
+                    oscillator.frequency.exponentialRampToValueAtTime(800, now + 0.1);
+                    gainNode.gain.setValueAtTime(0.3, now);
+                    gainNode.gain.exponentialRampToValueAtTime(0.01, now + 0.2);
+                    oscillator.start(now);
+                    oscillator.stop(now + 0.2);
+                    break;
+                    
+                case 'jump':
+                    // Sonido de salto - tono corto ascendente
+                    oscillator.type = 'square';
+                    oscillator.frequency.setValueAtTime(200, now);
+                    oscillator.frequency.exponentialRampToValueAtTime(500, now + 0.1);
+                    gainNode.gain.setValueAtTime(0.2, now);
+                    gainNode.gain.exponentialRampToValueAtTime(0.01, now + 0.15);
+                    oscillator.start(now);
+                    oscillator.stop(now + 0.15);
+                    break;
+                    
+                case 'pause':
+                    // Sonido de pausa - tono medio
+                    oscillator.type = 'sine';
+                    oscillator.frequency.setValueAtTime(300, now);
+                    oscillator.frequency.setValueAtTime(300, now + 0.1);
+                    gainNode.gain.setValueAtTime(0.2, now);
+                    gainNode.gain.exponentialRampToValueAtTime(0.01, now + 0.3);
+                    oscillator.start(now);
+                    oscillator.stop(now + 0.3);
+                    break;
+                    
+                case 'cambio':
+                    // Sonido de cambio de escena - tono descendente
+                    oscillator.type = 'triangle';
+                    oscillator.frequency.setValueAtTime(600, now);
+                    oscillator.frequency.exponentialRampToValueAtTime(200, now + 0.3);
+                    gainNode.gain.setValueAtTime(0.25, now);
+                    gainNode.gain.exponentialRampToValueAtTime(0.01, now + 0.4);
+                    oscillator.start(now);
+                    oscillator.stop(now + 0.4);
+                    break;
+                    
+                case 'puerta':
+                    // Sonido de puerta - click metálico
+                    oscillator.type = 'square';
+                    oscillator.frequency.setValueAtTime(200, now);
+                    oscillator.frequency.exponentialRampToValueAtTime(80, now + 0.08);
+                    gainNode.gain.setValueAtTime(0.25, now);
+                    gainNode.gain.exponentialRampToValueAtTime(0.01, now + 0.15);
+                    oscillator.start(now);
+                    oscillator.stop(now + 0.15);
+                    break;
+                    
+                case 'correcto':
+                    // Sonido de respuesta correcta - tono alegre
+                    oscillator.type = 'sine';
+                    oscillator.frequency.setValueAtTime(523, now); // C5
+                    oscillator.frequency.setValueAtTime(659, now + 0.1); // E5
+                    oscillator.frequency.setValueAtTime(784, now + 0.2); // G5
+                    gainNode.gain.setValueAtTime(0.3, now);
+                    gainNode.gain.exponentialRampToValueAtTime(0.01, now + 0.4);
+                    oscillator.start(now);
+                    oscillator.stop(now + 0.4);
+                    break;
+                    
+                case 'incorrecto':
+                    // Sonido de respuesta incorrecta
+                    oscillator.type = 'sawtooth';
+                    oscillator.frequency.setValueAtTime(200, now);
+                    oscillator.frequency.exponentialRampToValueAtTime(100, now + 0.3);
+                    gainNode.gain.setValueAtTime(0.25, now);
+                    gainNode.gain.exponentialRampToValueAtTime(0.01, now + 0.4);
+                    oscillator.start(now);
+                    oscillator.stop(now + 0.4);
+                    break;
+            }
+        }
+        
+        // ============================================
+        // SISTEMA DE RESPUESTAS
+        // ============================================
+        const campoRespuesta = document.getElementById('campoRespuesta');
+        const inputRespuesta = document.getElementById('inputRespuesta');
+        const resultadoRespuesta = document.getElementById('resultadoRespuesta');
+        
+        function verificarRespuesta() {
+            const respuesta = inputRespuesta.value.trim().toLowerCase();
+            const resultado = document.getElementById('resultadoRespuesta');
+            
+            // Normalizar respuesta para comparación
+            const normalizar = (str) => str.replace(/\s+/g, '').replace(/,/g, '.').toLowerCase();
+            
+            if (normalizar(respuesta) === normalizar(respuestaCorrecta)) {
+                resultado.textContent = '✅ ¡CORRECTO!';
+                resultado.style.color = '#00FF00';
+                playSound('correcto');
+            } else {
+                resultado.textContent = '❌ INCORRECTO';
+                resultado.style.color = '#FF0000';
+                playSound('incorrecto');
+            }
+            
+            // Limpiar después de 3 segundos
+            setTimeout(() => {
+                resultado.textContent = '';
+                inputRespuesta.value = '';
+            }, 3000);
+        }
+        
+        // Detectar Enter en el campo de respuesta
+        inputRespuesta.addEventListener('keydown', (e) => {
+            if (e.key === 'Enter') {
+                verificarRespuesta();
+            }
+        });
+        
+        // Función para cerrar el campo de respuesta
+        function cerrarRespuesta() {
+            problemaVisible = false;
+            campoRespuesta.classList.add('hidden');
+            inputRespuesta.value = '';
+            document.getElementById('resultadoRespuesta').textContent = '';
+        }
+        const canvas = document.getElementById('escenario');
+        const ctx = canvas.getContext('2d');
+        const menuPausa = document.getElementById('menuPausa');
+        const btnSalirMenu = document.getElementById('btnSalirMenu');
+        const capaTransicion = document.getElementById('capaTransicion');
+        const ingeCorriendoCanvas = document.getElementById('ingeCorriendoCanvas');
+        const ingeCorriendoCtx = ingeCorriendoCanvas.getContext('2d');
+        const barraProgreso = document.getElementById('barraProgreso'); // Referencia a la barra
+        let estadoJuego = 'inicio';
+        let juegoPausado = false;
+        let enTransicion = false;
+        let animacionCargaActiva = false;
+        let progresoActual = 0;
+        let frameCorriendo = 0;
+
+        let ingeniero = {
+            x: 620,
+            y: 600,
+            ancho: 16,
+            alto: 28,
+            velocidad: 5,
+            estado: 'parado',
+            frameAnimacion: 0,
+            enSuelo: true,
+            velocidadSalto: 0,
+            gravedad: 0.8,
+            fuerzaSalto: -15,
+            enMaquina: false
+        };
+
+        let tractor = {
+            x: 80,
+            y: 565,
+            ancho: 140,
+            alto: 60,
+            velocidad: 4,
+            direccion: 1,
+            direccionObjetivo: 1,
+            anguloBrazo: 15,
+            velocidadBrazo: 2.5,
+            rangoMin: -20,
+            rangoMax: 75
+        };
+
+        let puertas = [];
+        const anchoPuerta = 89;
+        const altoPuerta = 145;
+        const grosorMarco = 4;
+        const distanciaInteraccion = 60;
+        const desplazamientoMax = 42;
+        const velocidadCinematica = 0.06;
+
+        let puertasEdificio = [
+            {
+                centroX: 0, x: 0, y: 0,
+                abierta: false, estadoDeseado: false, enMovimiento: false, progresoAnimacion: 0,
+                ancho: 50, alto: 100,
+                sonidoReproducido: false
+            },
+            {
+                centroX: 0, x: 0, y: 0,
+                abierta: false, estadoDeseado: false, enMovimiento: false, progresoAnimacion: 0,
+                ancho: 50, alto: 100,
+                sonidoReproducido: false
+            }
+        ];
+        let teclas = {};
+        const ecuaciones = [
+            "σ = P/A", "τ = VQ/Ib", "δ = PL/AE", "M = wL²/8", "V = k*i*A",
+            "Q = C*A*√(2gh)", "σ = My/I", "f'c = 0.85*fck", "γ = Gs*γw/(1+e)",
+            "q = γ*H*Ka", "Fs = tanφ/tanβ", "Δ = 5wL⁴/(384EI)", "Re = ρVD/μ",
+            "Fr = V/√(gD)", "p = ρgh", "σv' = γ*z - u", "I = bh³/12", "Z = I/y_max",
+            "EI·d⁴y/dx⁴ = -w(x)", "d²u/dt² = c²·d²u/dx²", "d²h/dx² = -q/k",
+            "d²T/dx² + q_gen/k =  0", "∂σ/∂x + ∂τ/∂y = 0", "∂²φ/∂x² + ∂²φ/∂y² = 0",
+            "d²y/dx² + P/EI·y = 0", "∂u/∂t = α·∂²u/∂x²", "dV/dx = -w(x)",
+            "dM/dx = V(x)", "d²θ/dx² + (P/EI)·θ = 0", "∇²φ = -ρ/ε",
+            "d²z/dx² + d²z/dy² = -q/D", "∂v/∂x + ∂u/∂y = 0"
+        ];
+        let lluvia = [];
+        const columnas = 12;
+        const espaciadoX = canvas.width / columnas;
+        function crearEcuacion(columna) {
+            lluvia.push({
+                texto: ecuaciones[Math.floor(Math.random() * ecuaciones.length)],
+                x: columna * espaciadoX + espaciadoX/3,
+                y: -30 - Math.random() * 200,
+                velocidad: 0.4 + Math.random() * 0.6,
+                tamano: 14,
+                opacidad: 0.35 + Math.random() * 0.35
+            });
+        }
+        for(let c=0; c<columnas; c++) crearEcuacion(c);
+        function dibujarIngenieroCorriendo() {
+            if(!animacionCargaActiva) {
+                ingeCorriendoCtx.clearRect(0, 0, ingeCorriendoCanvas.width, ingeCorriendoCanvas.height);
+                return;
+            }
+            ingeCorriendoCtx.clearRect(0, 0, ingeCorriendoCanvas.width, ingeCorriendoCanvas.height);
+            frameCorriendo++;
+            
+            // Frame de animación (4 estados)
+            const frameAnim = Math.floor(frameCorriendo / 4) % 4;
+            
+            // Sombrero blanco
+            ingeCorriendoCtx.fillStyle = '#FFFFFF';
+            ingeCorriendoCtx.fillRect(17, 5, 26, 8);
+            ingeCorriendoCtx.fillRect(21, 0, 18, 8);
+            // Cabeza piel
+            ingeCorriendoCtx.fillStyle = '#FFDBAC';
+            ingeCorriendoCtx.fillRect(20, 13, 20, 15);
+            // Ojos
+            ingeCorriendoCtx.fillStyle = '#000';
+            ingeCorriendoCtx.fillRect(24, 18, 4, 4);
+            ingeCorriendoCtx.fillRect(34, 18, 4, 4);
+            // Cuerpo rojo
+            ingeCorriendoCtx.fillStyle = '#FF2222';
+            ingeCorriendoCtx.fillRect(18, 28, 24, 14);
+            
+            // Brazos animados (alternando)
+            ingeCorriendoCtx.fillStyle = '#FFDBAC';
+            if(frameAnim === 0 || frameAnim === 2) {
+                ingeCorriendoCtx.fillRect(12, 28, 6, 14);
+                ingeCorriendoCtx.fillRect(42, 32, 6, 10);
+            } else {
+                ingeCorriendoCtx.fillRect(12, 32, 6, 10);
+                ingeCorriendoCtx.fillRect(42, 28, 6, 14);
+            }
+            
+            // Pantalón azul
+            ingeCorriendoCtx.fillStyle = '#0055FF';
+            ingeCorriendoCtx.fillRect(20, 42, 20, 16);
+            
+            // Piernas corriendo (4 frames de carrera)
+            if(frameAnim === 0) {
+                ingeCorriendoCtx.fillRect(18, 58, 8, 14);
+                ingeCorriendoCtx.fillRect(34, 54, 8, 16);
+            } else if(frameAnim === 1) {
+                ingeCorriendoCtx.fillRect(20, 56, 8, 16);
+                ingeCorriendoCtx.fillRect(32, 58, 8, 12);
+            } else if(frameAnim === 2) {
+                ingeCorriendoCtx.fillRect(18, 54, 8, 16);
+                ingeCorriendoCtx.fillRect(34, 58, 8, 14);
+            } else {
+                ingeCorriendoCtx.fillRect(20, 58, 8, 12);
+                ingeCorriendoCtx.fillRect(32, 56, 8, 16);
+            }
+            
+            requestAnimationFrame(dibujarIngenieroCorriendo);
+        }
+        function actualizarBarra() {
+            if(!animacionCargaActiva) return;
+            progresoActual += 4;
+            barraProgreso.style.width = `${progresoActual}%`;
+            if(progresoActual < 100) setTimeout(actualizarBarra, 40);
+        }
+        function iniciarPantallaDeCarga(callback) {
+            if(enTransicion) return;
+            enTransicion = true;
+            enCarga = true; // Detener música durante la carga
+            detenerMusica();
+            progresoActual = 0;
+            barraProgreso.style.width = `0%`;
+            capaTransicion.style.opacity = '1';
+            // Dibujar ingeniero inmediatamente
+            frameCorriendo = 0;
+            dibujarIngenieroCorriendo();
+            setTimeout(() => {
+                animacionCargaActiva = true;
+                dibujarIngenieroCorriendo();
+                actualizarBarra();
+                setTimeout(() => {
+                    animacionCargaActiva = false;
+                    enCarga = false; // Reanudar música después de la carga
+                    callback();
+                    capaTransicion.style.opacity = '0';
+                    setTimeout(() => { enTransicion = false; }, 500);
+                }, 2000);
+            }, 250);
+        }
+        function cambiarEscena(destino) {
+            playSound('cambio');
+            problemaVisible = false;
+            campoRespuesta.classList.add('hidden');
+            iniciarPantallaDeCarga(() => {
+                estadoJuego = destino;
+                ingeniero.x = 100;
+                ingeniero.y = 620 - ingeniero.alto;
+                ingeniero.enMaquina = false;
+                puertas = [];
+                puertasEdificio.forEach(p => {
+                    p.abierta = false; p.estadoDeseado = false; p.enMovimiento = false; p.progresoAnimacion = 0;
+                });
+                // Iniciar música según la escena
+                if (destino === 'inicio') iniciarMusica('inicio');
+                else if (destino === 'escena1') iniciarMusica('escena1');
+                else if (destino === 'escena4') iniciarMusica('escena4');
+                else if (destino === 'escena5') iniciarMusica('escena5');
+                else if (destino === 'escena6') iniciarMusica('escena6');
+            });
+        }
+        document.addEventListener('keydown', (e) => {
+            if(e.key === 'Escape'){
+                if(estadoJuego !== 'inicio' && !enTransicion){
+                    juegoPausado = !juegoPausado;
+                    menuPausa.classList.toggle('hidden', !juegoPausado);
+                    playSound('pause');
+                    return;
+                }
+            }
+            if(juegoPausado || enTransicion) return;
+            teclas[e.key.toLowerCase()] = true;
+            if(e.key === 'Enter' && estadoJuego === 'inicio') {
+                playSound('enter');
+                cambiarEscena('escena1');
+            }
+            if(e.key.toLowerCase() === 'f'){
+                if(!ingeniero.enMaquina){
+                    if(estadoJuego === 'escena1'){
+                        let puertaCercana = null, indicePuerta = -1;
+                        for(let i=0; i < puertas.length; i++){
+                            const p = puertas[i];
+                            const distancia = Math.abs(ingeniero.x - p.centroX);
+                            if(distancia < distanciaInteraccion && !p.enMovimiento){
+                                puertaCercana = p; indicePuerta = i; break;
+                            }
+                        }
+                        if(puertaCercana){
+                            puertaCercana.estadoDeseado = !puertaCercana.abierta;
+                            puertaCercana.enMovimiento = true;
+                            puertaCercana.esLaPuerta1 = (indicePuerta === 0);
+                            playSound('puerta');
+                            teclas['f'] = false;
+                            return;
+                        }
+                    }
+                    if(estadoJuego === 'escena4'){
+                        let puertaCercana = null, indicePuerta = -1;
+                        for(let i=0; i < puertasEdificio.length; i++){
+                            const p = puertasEdificio[i];
+                            const distancia = Math.abs(ingeniero.x - p.centroX);
+                            if(distancia < distanciaInteraccion && !p.enMovimiento){
+                                puertaCercana = p; indicePuerta = i; break;
+                            }
+                        }
+                        if(puertaCercana){
+                            puertaCercana.estadoDeseado = !puertaCercana.abierta;
+                            puertaCercana.enMovimiento = true;
+                            puertaCercana.esLaPuertaIzquierda = (indicePuerta === 0);
+                            playSound('puerta');
+                            teclas['f'] = false;
+                            return;
+                        }
+                    }
+                }
+                if(estadoJuego === 'escena5' || estadoJuego === 'escena6'){
+                    let puertaCercana = null, indicePuerta = -1;
+                    for(let i=0; i < puertasEdificio.length; i++){
+                        const p = puertasEdificio[i];
+                        const distancia = Math.abs(ingeniero.x - p.centroX);
+                        if(distancia < distanciaInteraccion && !p.enMovimiento){
+                            puertaCercana = p; indicePuerta = i; break;
+                        }
+                    }
+                    if(puertaCercana){
+                        puertaCercana.estadoDeseado = !puertaCercana.abierta;
+                        puertaCercana.enMovimiento = true;
+                        puertaCercana.esLaPuertaIzquierda = (indicePuerta === 0);
+                        playSound('puerta');
+                        teclas['f'] = false;
+                        return;
+                    }
+                }
+                if(ingeniero.enMaquina){
+                    ingeniero.enMaquina = false;
+                    ingeniero.y = 620 - ingeniero.alto;
+                } else {
+                    const cercaX = ingeniero.x + ingeniero.ancho > tractor.x && ingeniero.x < tractor.x + tractor.ancho;
+                    const cercaY = ingeniero.y + ingeniero.alto > tractor.y - 10 && ingeniero.y < tractor.y + tractor.alto;
+                    if(ingeniero.enSuelo && cercaX && cercaY){
+                        ingeniero.enMaquina = true;
+                        ingeniero.x = tractor.x + 62 - ingeniero.ancho/2;
+                        ingeniero.y = tractor.y - ingeniero.alto;
+                        ingeniero.enSuelo = true;
+                        ingeniero.velocidadSalto = 0;
+                    }
+                }
+            }
+            if(e.key.toLowerCase() === 'e'){
+                if(estadoJuego === 'escena1'){
+                    for(let i = 0; i < puertas.length; i++){
+                        let puerta = puertas[i];
+                        if(puerta && puerta.abierta){
+                            const distancia = Math.abs(ingeniero.x - puerta.centroX);
+                            if(distancia < distanciaInteraccion){
+                                cambiarEscena(puerta.destino);
+                                break;
+                            }
+                        }
+                    }
+                }
+                if(estadoJuego === 'escena4' || estadoJuego === 'escena5' || estadoJuego === 'escena6'){
+                    let puertaIzquierda = puertasEdificio[0];
+                    if(puertaIzquierda && puertaIzquierda.abierta){
+                        const distancia = Math.abs(ingeniero.x - puertaIzquierda.centroX);
+                        if(distancia < distanciaInteraccion) cambiarEscena('escena1');
+                    }
+                }
+            }
+        });
+        document.addEventListener('keyup', (e) => {
+            if(juegoPausado || enTransicion) return;
+            teclas[e.key.toLowerCase()] = false;
+        });
+        btnSalirMenu.addEventListener('click', () => {
+            juegoPausado = false;
+            menuPausa.classList.add('hidden');
+            detenerMusica();
+            iniciarPantallaDeCarga(() => {
+                estadoJuego = 'inicio';
+                ingeniero.x = 620;
+                ingeniero.y = 600;
+                ingeniero.enMaquina = false;
+                tractor.x = 80;
+                tractor.y = 565;
+                puertas = [];
+                iniciarMusica('inicio');
+            });
+        });
+        function actualizar() {
+            if(juegoPausado || enTransicion) return;
+            puertas.forEach(p => {
+                if(p.enMovimiento){
+                    if(p.estadoDeseado){
+                        if(!p.sonidoReproducido && p.progresoAnimacion >= 0.5){
+                            playSound('puerta');
+                            p.sonidoReproducido = true;
+                        }
+                        p.progresoAnimacion += velocidadCinematica;
+                        if(p.progresoAnimacion >= 1){
+                            p.progresoAnimacion = 1; p.abierta = true; p.enMovimiento = false; p.sonidoReproducido = false;
+                        }
+                    } else {
+                        if(!p.sonidoReproducido && p.progresoAnimacion <= 0.5){
+                            playSound('puerta');
+                            p.sonidoReproducido = true;
+                        }
+                        p.progresoAnimacion -= velocidadCinematica;
+                        if(p.progresoAnimacion <= 0){
+                            p.progresoAnimacion = 0; p.abierta = false; p.enMovimiento = false; p.sonidoReproducido = false;
+                        }
+                    }
+                }
+            });
+            puertasEdificio.forEach(p => {
+                if(p.enMovimiento){
+                    if(p.estadoDeseado){
+                        if(!p.sonidoReproducido && p.progresoAnimacion >= 0.5){
+                            playSound('puerta');
+                            p.sonidoReproducido = true;
+                        }
+                        p.progresoAnimacion += velocidadCinematica;
+                        if(p.progresoAnimacion >= 1){
+                            p.progresoAnimacion = 1; p.abierta = true; p.enMovimiento = false; p.sonidoReproducido = false;
+                        }
+                    } else {
+                        if(!p.sonidoReproducido && p.progresoAnimacion <= 0.5){
+                            playSound('puerta');
+                            p.sonidoReproducido = true;
+                        }
+                        p.progresoAnimacion -= velocidadCinematica;
+                        if(p.progresoAnimacion <= 0){
+                            p.progresoAnimacion = 0; p.abierta = false; p.enMovimiento = false; p.sonidoReproducido = false;
+                            problemaVisible = false;
+                            campoRespuesta.classList.add('hidden');
+                        }
+                    }
+                }
+            });
+            if(estadoJuego === 'inicio'){
+                for(let i=0; i<lluvia.length; i++){
+                    lluvia[i].y += lluvia[i].velocidad;
+                    if(lluvia[i].y > canvas.height){
+                        const columnaOriginal = Math.round(lluvia[i].x / espaciadoX);
+                        lluvia.splice(i, 1); crearEcuacion(columnaOriginal); i--;
+                    }
+                }
+                if(ingeniero.enMaquina){
+                    if (teclas['arrowup']) tractor.anguloBrazo = Math.min(tractor.anguloBrazo + tractor.velocidadBrazo, tractor.rangoMax);
+                    if (teclas['arrowdown']) tractor.anguloBrazo = Math.max(tractor.anguloBrazo - tractor.velocidadBrazo, tractor.rangoMin);
+                    if (teclas['arrowleft'] || teclas['a']) {
+                        tractor.x -= tractor.velocidad; tractor.direccionObjetivo = 1;
+                        ingeniero.estado = 'izquierda'; ingeniero.frameAnimacion++;
+                    } else if (teclas['arrowright'] || teclas['d']) {
+                        tractor.x += tractor.velocidad; tractor.direccionObjetivo = -1;
+                        ingeniero.estado = 'derecha'; ingeniero.frameAnimacion++;
+                    } else ingeniero.estado = 'parado';
+                    const suavidad = 0.03;
+                    tractor.direccion += (tractor.direccionObjetivo - tractor.direccion) * suavidad;
+                    ingeniero.x = tractor.x + 62 - ingeniero.ancho/2;
+                    ingeniero.y = tractor.y - ingeniero.alto;
+                    tractor.x = Math.max(20, Math.min(canvas.width - tractor.ancho - 20, tractor.x));
+                } else actualizarMovimientoIngeniero();
+            } else if (!ingeniero.enMaquina) actualizarMovimientoIngeniero();
+        }
+        function actualizarMovimientoIngeniero(){
+            if (teclas['arrowleft'] || teclas['a']) {
+                ingeniero.x -= ingeniero.velocidad; ingeniero.estado = 'izquierda';
+                ingeniero.frameAnimacion++; ingeniero.x = Math.max(20, ingeniero.x);
+            } else if (teclas['arrowright'] || teclas['d']) {
+                ingeniero.x += ingeniero.velocidad; ingeniero.estado = 'derecha';
+                ingeniero.frameAnimacion++; ingeniero.x = Math.min(canvas.width - ingeniero.ancho - 20, ingeniero.x);
+            } else ingeniero.estado = 'parado';
+            if ((teclas[' '] || teclas['arrowup']) && ingeniero.enSuelo) {
+                ingeniero.velocidadSalto = ingeniero.fuerzaSalto; ingeniero.enSuelo = false;
+                playSound('jump');
+            }
+            ingeniero.y += ingeniero.velocidadSalto;
+            if (!ingeniero.enSuelo) ingeniero.velocidadSalto += ingeniero.gravedad;
+            const limiteSuelo = 620;
+            if (ingeniero.y + ingeniero.alto >= limiteSuelo) {
+                ingeniero.y = limiteSuelo - ingeniero.alto; ingeniero.velocidadSalto = 0; ingeniero.enSuelo = true;
+            }
+        }
+        function dibujar() {
+            const gradCielo = ctx.createLinearGradient(0, 0, 0, 400);
+            gradCielo.addColorStop(0, '#1A1A33');
+            gradCielo.addColorStop(1, '#603070');
+            ctx.fillStyle = gradCielo;
+            ctx.fillRect(0, 0, canvas.width, canvas.height);
+            ctx.fillStyle = '#253040';
+            ctx.beginPath();
+            ctx.moveTo(0, 380);
+            ctx.quadraticCurveTo(300, 320, 600, 370);
+            ctx.quadraticCurveTo(900, 410, 1280, 350);
+            ctx.lineTo(1280, 620);
+            ctx.lineTo(0, 620);
+            ctx.closePath();
+            ctx.fill();
+            switch(estadoJuego){
+                case 'inicio': dibujarEscenaInicio(); break;
+                case 'escena1': dibujarEscenaPilares(); break;
+                case 'escena4': dibujarEscena4(); break;
+                case 'escena5': dibujarEscena5(); break;
+                case 'escena6': dibujarEscena6(); break;
+            }
+        }
+        function dibujarEscenaInicio() {
+            ctx.textAlign = 'left';
+            lluvia.forEach(eq => {
+                ctx.font = `${eq.tamano}px "Press Start 2P"`;
+                ctx.globalAlpha = eq.opacidad;
+                ctx.fillStyle = '#FFFFFF';
+                ctx.fillText(eq.texto, eq.x, eq.y);
+            });
+            ctx.globalAlpha = 1.0;
+            ctx.fillStyle = '#D69850';
+            ctx.fillRect(0, 620, canvas.width, 100);
+            ctx.fillStyle = '#B47A3C';
+            ctx.fillRect(0, 660, canvas.width, 60);
+            ctx.textAlign = 'center';
+            ctx.font = 'bold 50px "Press Start 2P"';
+            ctx.fillStyle = '#B4881C';
+            ctx.fillText('SALVA A TU', canvas.width / 2 + 3, 103);
+            ctx.fillText('INGENIERO', canvas.width / 2 + 3, 163);
+            ctx.fillStyle = '#F2D026';
+            ctx.fillText('SALVA A TU', canvas.width / 2, 100);
+            ctx.fillText('INGENIERO', canvas.width / 2, 160);
+            dibujarTractor();
+            if(!ingeniero.enMaquina) dibujarIngeniero();
+            const tiempo = Date.now() / 1000;
+            const brilloColor = 200 + Math.sin(tiempo * 3) * 55;
+            ctx.textAlign = 'center';
+            ctx.font = `bold 26px "Press Start 2P"`;
+            ctx.lineWidth = 3;
+            ctx.strokeStyle = `rgba(0, 0, 0, 1.0)`;
+            ctx.strokeText('PULSA  ENTER', canvas.width / 2, canvas.height / 2 - 25);
+            ctx.strokeText('PARA COMENZAR', canvas.width / 2, canvas.height / 2 + 25);
+            ctx.fillStyle = `rgb(255, ${brilloColor}, 0)`;
+            ctx.fillText('PULSA  ENTER', canvas.width / 2, canvas.height / 2 - 25);
+            ctx.fillText('PARA COMENZAR', canvas.width / 2, canvas.height / 2 + 25);
+        }
+        function dibujarEscenaPilares() {
+            ctx.fillStyle = '#5D6D7E';
+            ctx.fillRect(0, 620, canvas.width, 100);
+            ctx.fillStyle = '#34495E';
+            ctx.fillRect(0, 700, canvas.width, 20);
+            const anchoPilar = 15, altoPilarNormal = 150, altoPilarAlto = 230, separacionEntrePilares = 100;
+            const inicioX = (canvas.width - (anchoPilar * 4 + separacionEntrePilares * 3)) / 2;
+            const alturasPilares = [altoPilarAlto, altoPilarNormal, altoPilarNormal, altoPilarAlto];
+            const posicionesX = [], puntasSuperiores = [];
+            for (let i = 0; i < 4; i++) {
+                const x = inicioX + (anchoPilar + separacionEntrePilares) * i;
+                const posY = 620 - alturasPilares[i];
+                posicionesX.push(x + anchoPilar / 2);
+                puntasSuperiores.push({ x: x + anchoPilar / 2, y: posY });
+            }
+            // Destinos de cada puerta
+            const destinosPuertas = ['escena4', 'escena5', 'escena6'];
+            ctx.globalAlpha = 1.0;
+            ctx.beginPath();
+            ctx.moveTo(puntasSuperiores[0].x, puntasSuperiores[0].y + 5);
+            ctx.lineTo((puntasSuperiores[0].x + puntasSuperiores[3].x) / 2, puntasSuperiores[0].y - 90);
+            ctx.lineTo(puntasSuperiores[3].x, puntasSuperiores[3].y + 5);
+            ctx.lineTo(puntasSuperiores[3].x, 620);
+            ctx.lineTo(puntasSuperiores[0].x, 620);
+            ctx.closePath();
+            ctx.fillStyle = '#FFFFFF';
+            ctx.fill();
+            ctx.lineWidth = 15;
+            ctx.strokeStyle = '#E67E22';
+            ctx.beginPath();
+            ctx.moveTo(puntasSuperiores[0].x, puntasSuperiores[0].y + 5);
+            ctx.lineTo((puntasSuperiores[0].x + puntasSuperiores[3].x) / 2, puntasSuperiores[0].y - 90);
+            ctx.lineTo(puntasSuperiores[3].x, puntasSuperiores[3].y + 5);
+            ctx.stroke();
+            ctx.fillStyle = '#E67E22';
+            for (let i = 0; i < 4; i++) {
+                const x = inicioX + (anchoPilar + separacionEntrePilares) * i;
+                ctx.fillRect(x, 620 - alturasPilares[i], anchoPilar, alturasPilares[i]);
+            }
+            const colorCafe = '#242c37', colorBorde = '#E67E22';
+            if(puertas.length === 0){
+                for (let i = 0; i < posicionesX.length - 1; i++) {
+                    const xCentro = (posicionesX[i] + posicionesX[i + 1]) / 2;
+                    const yBase = 620 - altoPilarNormal;
+                    const anchoElipse = separacionEntrePilares, altoElipse = separacionEntrePilares / 2.5;
+                    ctx.beginPath();
+                    ctx.ellipse(xCentro, yBase, anchoElipse / 2, altoElipse, 0, Math.PI, 2 * Math.PI);
+                    ctx.lineTo(xCentro + anchoElipse / 2, 620);
+                    ctx.lineTo(xCentro - anchoElipse / 2, 620);
+                    ctx.closePath();
+                    ctx.fillStyle = colorCafe;
+                    ctx.fill();
+                    ctx.lineWidth = 15;
+                    ctx.strokeStyle = colorBorde;
+                    ctx.beginPath();
+                    ctx.ellipse(xCentro, yBase, anchoElipse / 2, altoElipse, 0, Math.PI, 2 * Math.PI);
+                    ctx.stroke();
+                    puertas.push({
+                        centroX: xCentro, x: xCentro - (anchoPuerta / 2), y: 620 - altoPuerta,
+                        abierta: false, estadoDeseado: false, enMovimiento: false, progresoAnimacion: 0,
+                        destino: destinosPuertas[i],
+                        sonidoReproducido: false
+                    });
+                }
+            }
+            for (let i = 0; i < posicionesX.length - 1; i++) {
+                const xCentro = (posicionesX[i] + posicionesX[i + 1]) / 2;
+                const yBase = 620 - altoPilarNormal;
+                const anchoElipse = separacionEntrePilares, altoElipse = separacionEntrePilares / 2.5;
+                ctx.beginPath();
+                ctx.ellipse(xCentro, yBase, anchoElipse / 2, altoElipse, 0, Math.PI, 2 * Math.PI);
+                ctx.lineTo(xCentro + anchoElipse / 2, 620);
+                ctx.lineTo(xCentro - anchoElipse / 2, 620);
+                ctx.closePath();
+                ctx.fillStyle = colorCafe;
+                ctx.fill();
+                ctx.lineWidth = 15;
+                ctx.strokeStyle = colorBorde;
+                ctx.beginPath();
+                ctx.ellipse(xCentro, yBase, anchoElipse / 2, altoElipse, 0, Math.PI, 2 * Math.PI);
+                ctx.stroke();
+                const p = puertas[i];
+                const desplazamientoActual = p.progresoAnimacion * desplazamientoMax;
+                ctx.fillStyle = '#2C1A0E';
+                ctx.fillRect(p.x - grosorMarco, p.y - grosorMarco, anchoPuerta + grosorMarco*2, altoPuerta + grosorMarco*2);
+                ctx.fillStyle = '#5C3A21';
+                ctx.fillRect(p.x, p.y, (anchoPuerta/2) - desplazamientoActual, altoPuerta);
+                ctx.fillRect(p.x + (anchoPuerta/2) + desplazamientoActual, p.y, (anchoPuerta/2) - desplazamientoActual, altoPuerta);
+                ctx.fillStyle = '#3A2414';
+                ctx.fillRect(p.x + (anchoPuerta/2) - 2 + desplazamientoActual, p.y, 4, altoPuerta);
+                ctx.fillStyle = '#FFCC00';
+                ctx.fillRect(p.x + (anchoPuerta/2) - 8 + desplazamientoActual, 620 - (altoPuerta/2), 5, 8);
+                ctx.fillRect(p.x + (anchoPuerta/2) + 3 - desplazamientoActual, 620 - (altoPuerta/2), 5, 8);
+            }
+            ctx.textAlign = 'center'; ctx.textBaseline = 'middle';
+            ctx.font = 'bold 11px "Press Start 2P"'; ctx.fillStyle = '#000';
+            const centroX = (puntasSuperiores[0].x + puntasSuperiores[3].x) / 2;
+            const centroY = puntasSuperiores[0].y - 10;
+            ctx.fillText("UNIVERSIDAD DE", centroX, centroY - 15);
+            ctx.fillText("PAMPLONA", centroX, centroY + 15);
+            let puertaCercana = null;
+            for(let p of puertas){
+                const distancia = Math.abs(ingeniero.x - p.centroX);
+                if(distancia < distanciaInteraccion && !p.enMovimiento){ puertaCercana = p; break; }
+            }
+            if(puertaCercana){
+                ctx.font = 'bold 12px "Press Start 2P"'; ctx.fillStyle = '#FFCC00';
+                ctx.fillText(puertaCercana.abierta ? "Entrar (E)" : "Abrir (F)", ingeniero.x + 12, ingeniero.y - 20);
+            }
+            dibujarIngeniero();
+        }
+        function dibujarEscena4() {
+            ctx.fillStyle = '#5D6D7E'; ctx.fillRect(0, 620, canvas.width, 100);
+            ctx.fillStyle = '#34495E'; ctx.fillRect(0, 700, canvas.width, 20);
+            
+            // EDIFICIO 1 - Torre de cristal azul oscuro
+            const edificioX = canvas.width - 280, edificioY = 120, anchoEdificio = 240, altoEdificio = 500;
+            
+            // Base del edificio - cristal oscuro
+            ctx.fillStyle = '#1a3a5c';
+            ctx.fillRect(edificioX, edificioY, anchoEdificio, altoEdificio);
+            
+            // Reflectores de cristal
+            ctx.fillStyle = '#2a5a8c';
+            ctx.fillRect(edificioX + 10, edificioY + 10, anchoEdificio - 20, altoEdificio - 20);
+            
+            // Ventanas tipo rascacielos
+            ctx.fillStyle = '#4a9adc';
+            for(let y = edificioY + 30; y < edificioY + 470; y += 45){
+                ctx.fillRect(edificioX + 20, y, 45, 30);
+                ctx.fillRect(edificioX + 95, y, 45, 30);
+                ctx.fillRect(edificioX + 170, y, 45, 30);
+            }
+            
+            // Marco metálico superior
+            ctx.fillStyle = '#c0c0c0';
+            ctx.fillRect(edificioX - 5, edificioY - 30, anchoEdificio + 10, 35);
+            ctx.fillStyle = '#808080';
+            ctx.fillRect(edificioX + 30, edificioY - 25, anchoEdificio - 60, 10);
+            
+            // Línea decorativa vertical
+            ctx.fillStyle = '#2a5a8c';
+            ctx.fillRect(edificioX + anchoEdificio/2 - 3, edificioY, 6, altoEdificio);
+            puertasEdificio[0].x = 120; 
+            puertasEdificio[0].y = 620 - puertasEdificio[0].alto;
+            puertasEdificio[0].centroX = puertasEdificio[0].x + puertasEdificio[0].ancho/2;
+            ctx.fillStyle = '#2C1A0E';
+            ctx.fillRect(puertasEdificio[0].x - 4, puertasEdificio[0].y - 4, puertasEdificio[0].ancho + 8, puertasEdificio[0].alto + 4);
+            let desplazamientoActual = puertasEdificio[0].progresoAnimacion * (puertasEdificio[0].ancho / 2);
+            ctx.fillStyle = '#5C3A21';
+            ctx.fillRect(puertasEdificio[0].x, puertasEdificio[0].y, (puertasEdificio[0].ancho/2) - desplazamientoActual, puertasEdificio[0].alto);
+            ctx.fillRect(puertasEdificio[0].x + (puertasEdificio[0].ancho/2) + desplazamientoActual, puertasEdificio[0].y, (puertasEdificio[0].ancho/2) - desplazamientoActual, puertasEdificio[0].alto);
+            ctx.fillStyle = '#FFCC00';
+            ctx.fillRect(puertasEdificio[0].x + (puertasEdificio[0].ancho/2) - 8 + desplazamientoActual, 620 - (puertasEdificio[0].alto/2), 5, 8);
+            ctx.fillRect(puertasEdificio[0].x + (puertasEdificio[0].ancho/2) + 3 - desplazamientoActual, 620 - (puertasEdificio[0].alto/2), 5, 8);
+            puertasEdificio[1].x = edificioX + (anchoEdificio - puertasEdificio[1].ancho)/2; 
+            puertasEdificio[1].y = 620 - puertasEdificio[1].alto;
+            puertasEdificio[1].centroX = puertasEdificio[1].x + puertasEdificio[1].ancho/2;
+            ctx.fillStyle = '#2C1A0E';
+            ctx.fillRect(puertasEdificio[1].x - 4, puertasEdificio[1].y - 4, puertasEdificio[1].ancho + 8, puertasEdificio[1].alto + 4);
+            desplazamientoActual = puertasEdificio[1].progresoAnimacion * (puertasEdificio[1].ancho / 2);
+            ctx.fillStyle = '#5C3A21';
+            ctx.fillRect(puertasEdificio[1].x, puertasEdificio[1].y, (puertasEdificio[1].ancho/2) - desplazamientoActual, puertasEdificio[1].alto);
+            ctx.fillRect(puertasEdificio[1].x + (puertasEdificio[1].ancho/2) + desplazamientoActual, puertasEdificio[1].y, (puertasEdificio[1].ancho/2) - desplazamientoActual, puertasEdificio[1].alto);
+            ctx.fillStyle = '#FFCC00';
+            ctx.fillRect(puertasEdificio[1].x + (puertasEdificio[1].ancho/2) - 8 + desplazamientoActual, 620 - (puertasEdificio[1].alto/2), 5, 8);
+            ctx.fillRect(puertasEdificio[1].x + (puertasEdificio[1].ancho/2) + 3 - desplazamientoActual, 620 - (puertasEdificio[1].alto/2), 5, 8);
+            
+if(puertasEdificio[1].abierta && !problemaVisible){
+                problemaVisible = true;
+            }
+            if(problemaVisible){
+                escenaActualProblema = 'escena4';
+                respuestaCorrecta = '-0.3x+15';
+                
+                ctx.fillStyle = 'rgba(255, 255, 255, 0.97)';
+                ctx.fillRect(110, 50, 1060, 550);
+                ctx.strokeStyle = '#000000';
+                ctx.lineWidth = 3;
+                ctx.strokeRect(110, 50, 1060, 550);
+                ctx.textAlign = 'left';
+                ctx.fillStyle = '#000000';
+                ctx.font = 'bold 14px "Times New Roman", serif';
+                ctx.fillText("Se analiza el flujo unidimensional de agua en un acuífero homogéneo, saturado e isotrópico,", 140, 70);
+                ctx.fillText("que cumple con la Ecuación de Laplace en su forma simplificada para una dimensión:", 140, 110);
+                ctx.font = 'bold 18px "Times New Roman", serif';
+                ctx.fillText("d²h / dx² = 0", 140, 170);
+                ctx.font = 'bold 14px "Times New Roman", serif';
+                ctx.fillText("Al integrar sucesivamente la ecuación diferencial, se obtiene la solución general lineal:", 140, 220);
+                ctx.font = 'bold 18px "Times New Roman", serif';
+                ctx.fillText("h(x) = C₁x + C₂", 140, 270);
+                ctx.font = 'bold 15px "Times New Roman", serif';
+                ctx.fillText("Condiciones de frontera del problema:", 140, 320);
+                ctx.fillText("• En la distancia x = 0 m, la carga hidráulica es h(0) = 15 m", 160, 370);
+                ctx.fillText("• En la distancia x = 30 m, la carga hidráulica es h(30) = 6 m", 160, 420);
+                ctx.fillText("👉 Determine únicamente el valor numérico de las constantes C₁ y C₂.", 140, 470);
+                
+                // Mostrar campo de respuesta
+                campoRespuesta.classList.remove('hidden');
+            } else {
+                campoRespuesta.classList.add('hidden');
+            }
+            
+            ctx.textAlign = 'center'; ctx.font = 'bold 14px "Press Start 2P"'; ctx.fillStyle = '#FFF';
+            ctx.fillText("", canvas.width/2, 120);
+            let puertaCercana = null, indicePuerta = -1;
+            for(let i=0; i < puertasEdificio.length; i++){
+                const p = puertasEdificio[i];
+                const distancia = Math.abs(ingeniero.x - p.centroX);
+                if(distancia < distanciaInteraccion && !p.enMovimiento){ 
+                    puertaCercana = p; 
+                    indicePuerta = i; 
+                    break; 
+                }
+            }
+            if(puertaCercana){
+                ctx.font = 'bold 12px "Press Start 2P"'; ctx.fillStyle = '#FFCC00';
+                if (indicePuerta === 0) {
+                    ctx.fillText(puertaCercana.abierta ? "Volver (E)" : "Abrir (F)", ingeniero.x + 12, ingeniero.y - 20);
+                } else {
+                    ctx.fillText(puertaCercana.abierta ? "Abierta" : "Abrir (F)", ingeniero.x + 12, ingeniero.y - 20);
+                }
+            }
+            dibujarIngeniero();
+        }
+        
+        // ============================================
+        // ESCENA 5 - Torre cilíndrica de cristal azul
+        // ============================================
+        function dibujarEscena5() {
+            ctx.fillStyle = '#5D6D7E'; ctx.fillRect(0, 620, canvas.width, 100);
+            ctx.fillStyle = '#34495E'; ctx.fillRect(0, 700, canvas.width, 20);
+            
+            // EDIFICIO - Torre cilíndrica de cristal azul
+            const centroX = canvas.width - 150;
+            const edificioY = 100;
+            const radioEdificio = 130;
+            const altoEdificio = 520;
+            
+            // Base del edificio - cristal oscuro
+            ctx.fillStyle = '#1a3a5c';
+            ctx.beginPath();
+            ctx.ellipse(centroX, edificioY + altoEdificio, radioEdificio, 40, 0, 0, Math.PI * 2);
+            ctx.fill();
+            
+            // Cuerpo cilíndrico
+            ctx.fillStyle = '#1a3a5c';
+            ctx.fillRect(centroX - radioEdificio, edificioY, radioEdificio * 2, altoEdificio);
+            
+            // Reflectores de cristal
+            ctx.fillStyle = '#2a5a8c';
+            ctx.fillRect(centroX - radioEdificio + 10, edificioY + 10, radioEdificio * 2 - 20, altoEdificio - 20);
+            
+            // Ventanas circulares tipo torre
+            ctx.fillStyle = '#4a9adc';
+            for(let y = edificioY + 30; y < edificioY + 480; y += 45){
+                ctx.beginPath();
+                ctx.arc(centroX - 50, y + 15, 25, 0, Math.PI * 2);
+                ctx.fill();
+                ctx.beginPath();
+                ctx.arc(centroX + 50, y + 15, 25, 0, Math.PI * 2);
+                ctx.fill();
+            }
+            
+            // Marco metálico superior
+            ctx.fillStyle = '#c0c0c0';
+            ctx.beginPath();
+            ctx.ellipse(centroX, edificioY, radioEdificio, 35, 0, 0, Math.PI * 2);
+            ctx.fill();
+            ctx.fillStyle = '#808080';
+            ctx.beginPath();
+            ctx.ellipse(centroX, edificioY, radioEdificio - 30, 20, 0, 0, Math.PI * 2);
+            ctx.fill();
+            
+            // Línea decorativa vertical
+            ctx.fillStyle = '#2a5a8c';
+            ctx.fillRect(centroX - 3, edificioY, 6, altoEdificio);
+            
+            // Puerta izquierda (volver a escena1)
+            puertasEdificio[0].x = 120; 
+            puertasEdificio[0].y = 620 - puertasEdificio[0].alto;
+            puertasEdificio[0].centroX = puertasEdificio[0].x + puertasEdificio[0].ancho/2;
+            ctx.fillStyle = '#2C1A0E';
+            ctx.fillRect(puertasEdificio[0].x - 4, puertasEdificio[0].y - 4, puertasEdificio[0].ancho + 8, puertasEdificio[0].alto + 4);
+            let desplazamientoActual = puertasEdificio[0].progresoAnimacion * (puertasEdificio[0].ancho / 2);
+            ctx.fillStyle = '#5C3A21';
+            ctx.fillRect(puertasEdificio[0].x, puertasEdificio[0].y, (puertasEdificio[0].ancho/2) - desplazamientoActual, puertasEdificio[0].alto);
+            ctx.fillRect(puertasEdificio[0].x + (puertasEdificio[0].ancho/2) + desplazamientoActual, puertasEdificio[0].y, (puertasEdificio[0].ancho/2) - desplazamientoActual, puertasEdificio[0].alto);
+            ctx.fillStyle = '#FFCC00';
+            ctx.fillRect(puertasEdificio[0].x + (puertasEdificio[0].ancho/2) - 8 + desplazamientoActual, 620 - (puertasEdificio[0].alto/2), 5, 8);
+            ctx.fillRect(puertasEdificio[0].x + (puertasEdificio[0].ancho/2) + 3 - desplazamientoActual, 620 - (puertasEdificio[0].alto/2), 5, 8);
+            
+            // Puerta derecha (problema)
+            puertasEdificio[1].x = centroX - puertasEdificio[1].ancho/2; 
+            puertasEdificio[1].y = 620 - puertasEdificio[1].alto;
+            puertasEdificio[1].centroX = puertasEdificio[1].x + puertasEdificio[1].ancho/2;
+            ctx.fillStyle = '#2C1A0E';
+            ctx.fillRect(puertasEdificio[1].x - 4, puertasEdificio[1].y - 4, puertasEdificio[1].ancho + 8, puertasEdificio[1].alto + 4);
+            desplazamientoActual = puertasEdificio[1].progresoAnimacion * (puertasEdificio[1].ancho / 2);
+            ctx.fillStyle = '#5C3A21';
+            ctx.fillRect(puertasEdificio[1].x, puertasEdificio[1].y, (puertasEdificio[1].ancho/2) - desplazamientoActual, puertasEdificio[1].alto);
+            ctx.fillRect(puertasEdificio[1].x + (puertasEdificio[1].ancho/2) + desplazamientoActual, puertasEdificio[1].y, (puertasEdificio[1].ancho/2) - desplazamientoActual, puertasEdificio[1].alto);
+            ctx.fillStyle = '#FFCC00';
+            ctx.fillRect(puertasEdificio[1].x + (puertasEdificio[1].ancho/2) - 8 + desplazamientoActual, 620 - (puertasEdificio[1].alto/2), 5, 8);
+            ctx.fillRect(puertasEdificio[1].x + (puertasEdificio[1].ancho/2) + 3 - desplazamientoActual, 620 - (puertasEdificio[1].alto/2), 5, 8);
+            
+            // Mostrar problema si la puerta derecha está abierta
+            if(puertasEdificio[1].abierta && !problemaVisible){
+                problemaVisible = true;
+            }
+            if(problemaVisible){
+                escenaActualProblema = 'escena5';
+                respuestaCorrecta = '-2.5x+80';
+                
+                ctx.fillStyle = 'rgba(255, 255, 255, 0.97)';
+                ctx.fillRect(110, 50, 1060, 550);
+                ctx.strokeStyle = '#000000';
+                ctx.lineWidth = 3;
+                ctx.strokeRect(110, 50, 1060, 550);
+                ctx.textAlign = 'left';
+                ctx.fillStyle = '#000000';
+                ctx.font = 'bold 14px "Times New Roman", serif';
+                ctx.fillText("Se analiza la distribución de temperatura en estado estacionario en una varilla metálica", 140, 70);
+                ctx.fillText("homogénea y aislada lateralmente, que cumple con la Ecuación de Laplace en 1D:", 140, 110);
+                ctx.font = 'bold 18px "Times New Roman", serif';
+                ctx.fillText("d²T / dx² = 0", 140, 170);
+                ctx.font = 'bold 14px "Times New Roman", serif';
+                ctx.fillText("Al resolver la ecuación diferencial, se obtiene la distribución lineal de temperatura:", 140, 220);
+                ctx.font = 'bold 18px "Times New Roman", serif';
+                ctx.fillText("T(x) = C₁x + C₂", 140, 270);
+                ctx.font = 'bold 15px "Times New Roman", serif';
+                ctx.fillText("Condiciones de frontera del problema:", 140, 320);
+                ctx.fillText("• En el extremo izquierdo (x = 0 m), la temperatura es T(0) = 80°C", 160, 370);
+                ctx.fillText("• En el extremo derecho (x = 20 m), la temperatura es T(20) = 30°C", 160, 420);
+                ctx.fillText("👉 Determine únicamente el valor numérico de las constantes C₁ y C₂.", 140, 470);
+                
+                // Mostrar campo de respuesta
+                campoRespuesta.classList.remove('hidden');
+            } else {
+                campoRespuesta.classList.add('hidden');
+            }
+            
+            ctx.textAlign = 'center'; ctx.font = 'bold 14px "Press Start 2P"'; ctx.fillStyle = '#FFF';
+            ctx.fillText("", canvas.width/2, 120);
+            let puertaCercana = null, indicePuerta = -1;
+            for(let i=0; i < puertasEdificio.length; i++){
+                const p = puertasEdificio[i];
+                const distancia = Math.abs(ingeniero.x - p.centroX);
+                if(distancia < distanciaInteraccion && !p.enMovimiento){ 
+                    puertaCercana = p; 
+                    indicePuerta = i; 
+                    break; 
+                }
+            }
+            if(puertaCercana){
+                ctx.font = 'bold 12px "Press Start 2P"'; ctx.fillStyle = '#FFCC00';
+                if (indicePuerta === 0) {
+                    ctx.fillText(puertaCercana.abierta ? "Volver (E)" : "Abrir (F)", ingeniero.x + 12, ingeniero.y - 20);
+                } else {
+                    ctx.fillText(puertaCercana.abierta ? "Abierta" : "Abrir (F)", ingeniero.x + 12, ingeniero.y - 20);
+                }
+            }
+            dibujarIngeniero();
+        }
+        
+        // ============================================
+        // ESCENA 6 - Pirámide escalonada de cristal azul
+        // ============================================
+        function dibujarEscena6() {
+            ctx.fillStyle = '#5D6D7E'; ctx.fillRect(0, 620, canvas.width, 100);
+            ctx.fillStyle = '#34495E'; ctx.fillRect(0, 700, canvas.width, 20);
+            
+            // EDIFICIO - Pirámide escalonada de cristal azul
+            const centroX = canvas.width - 160;
+            const baseY = 620;
+            const anchoBase = 280;
+            const niveles = 5;
+            const altoNivel = 80;
+            
+            // Dibujar niveles escalonados
+            for(let i = 0; i < niveles; i++){
+                const nivelY = baseY - (i + 1) * altoNivel;
+                const anchoNivel = anchoBase - (i * 50);
+                const nivelX = centroX - anchoNivel/2;
+                
+                // Base del nivel - cristal oscuro
+                ctx.fillStyle = '#1a3a5c';
+                ctx.fillRect(nivelX, nivelY, anchoNivel, altoNivel);
+                
+                // Reflectores de cristal
+                ctx.fillStyle = '#2a5a8c';
+                ctx.fillRect(nivelX + 8, nivelY + 5, anchoNivel - 16, altoNivel - 10);
+                
+                // Ventanas en cada nivel
+                ctx.fillStyle = '#4a9adc';
+                const ventanasPorNivel = 3 - Math.floor(i/2);
+                const espaciadoVentana = anchoNivel / (ventanasPorNivel + 1);
+                for(let v = 0; v < ventanasPorNivel; v++){
+                    const ventX = nivelX + espaciadoVentana * (v + 1) - 20;
+                    ctx.fillRect(ventX, nivelY + 15, 40, 50);
+                }
+            }
+            
+            // Pico de la pirámide
+            const picoY = baseY - niveles * altoNivel - 40;
+            ctx.fillStyle = '#c0c0c0';
+            ctx.beginPath();
+            ctx.moveTo(centroX - 40, picoY + 40);
+            ctx.lineTo(centroX + 40, picoY + 40);
+            ctx.lineTo(centroX, picoY);
+            ctx.closePath();
+            ctx.fill();
+            
+            // Marco superior
+            ctx.fillStyle = '#808080';
+            ctx.beginPath();
+            ctx.moveTo(centroX - 30, picoY + 35);
+            ctx.lineTo(centroX + 30, picoY + 35);
+            ctx.lineTo(centroX, picoY + 10);
+            ctx.closePath();
+            ctx.fill();
+            
+            // Puerta izquierda (volver a escena1)
+            puertasEdificio[0].x = 120; 
+            puertasEdificio[0].y = 620 - puertasEdificio[0].alto;
+            puertasEdificio[0].centroX = puertasEdificio[0].x + puertasEdificio[0].ancho/2;
+            ctx.fillStyle = '#2C1A0E';
+            ctx.fillRect(puertasEdificio[0].x - 4, puertasEdificio[0].y - 4, puertasEdificio[0].ancho + 8, puertasEdificio[0].alto + 4);
+            let desplazamientoActual = puertasEdificio[0].progresoAnimacion * (puertasEdificio[0].ancho / 2);
+            ctx.fillStyle = '#5C3A21';
+            ctx.fillRect(puertasEdificio[0].x, puertasEdificio[0].y, (puertasEdificio[0].ancho/2) - desplazamientoActual, puertasEdificio[0].alto);
+            ctx.fillRect(puertasEdificio[0].x + (puertasEdificio[0].ancho/2) + desplazamientoActual, puertasEdificio[0].y, (puertasEdificio[0].ancho/2) - desplazamientoActual, puertasEdificio[0].alto);
+            ctx.fillStyle = '#FFCC00';
+            ctx.fillRect(puertasEdificio[0].x + (puertasEdificio[0].ancho/2) - 8 + desplazamientoActual, 620 - (puertasEdificio[0].alto/2), 5, 8);
+            ctx.fillRect(puertasEdificio[0].x + (puertasEdificio[0].ancho/2) + 3 - desplazamientoActual, 620 - (puertasEdificio[0].alto/2), 5, 8);
+            
+            // Puerta derecha (problema)
+            puertasEdificio[1].x = centroX - puertasEdificio[1].ancho/2; 
+            puertasEdificio[1].y = 620 - puertasEdificio[1].alto;
+            puertasEdificio[1].centroX = puertasEdificio[1].x + puertasEdificio[1].ancho/2;
+            ctx.fillStyle = '#2C1A0E';
+            ctx.fillRect(puertasEdificio[1].x - 4, puertasEdificio[1].y - 4, puertasEdificio[1].ancho + 8, puertasEdificio[1].alto + 4);
+            desplazamientoActual = puertasEdificio[1].progresoAnimacion * (puertasEdificio[1].ancho / 2);
+            ctx.fillStyle = '#5C3A21';
+            ctx.fillRect(puertasEdificio[1].x, puertasEdificio[1].y, (puertasEdificio[1].ancho/2) - desplazamientoActual, puertasEdificio[1].alto);
+            ctx.fillRect(puertasEdificio[1].x + (puertasEdificio[1].ancho/2) + desplazamientoActual, puertasEdificio[1].y, (puertasEdificio[1].ancho/2) - desplazamientoActual, puertasEdificio[1].alto);
+            ctx.fillStyle = '#FFCC00';
+            ctx.fillRect(puertasEdificio[1].x + (puertasEdificio[1].ancho/2) - 8 + desplazamientoActual, 620 - (puertasEdificio[1].alto/2), 5, 8);
+            ctx.fillRect(puertasEdificio[1].x + (puertasEdificio[1].ancho/2) + 3 - desplazamientoActual, 620 - (puertasEdificio[1].alto/2), 5, 8);
+            
+            // Mostrar problema si la puerta derecha está abierta
+            if(puertasEdificio[1].abierta && !problemaVisible){
+                problemaVisible = true;
+            }
+            if(problemaVisible){
+                escenaActualProblema = 'escena6';
+                respuestaCorrecta = '0.005x';
+                
+                ctx.fillStyle = 'rgba(255, 255, 255, 0.97)';
+                ctx.fillRect(110, 50, 1060, 550);
+                ctx.strokeStyle = '#000000';
+                ctx.lineWidth = 3;
+                ctx.strokeRect(110, 50, 1060, 550);
+                ctx.textAlign = 'left';
+                ctx.fillStyle = '#000000';
+                ctx.font = 'bold 14px "Times New Roman", serif';
+                ctx.fillText("Se analiza la deformación de una viga larga simplemente apoyada en posición horizontal,", 140, 70);
+                ctx.fillText("donde la línea elástica cumple con la Ecuación de Laplace simplificada:", 140, 110);
+                ctx.font = 'bold 18px "Times New Roman", serif';
+                ctx.fillText("d²y / dx² = 0", 140, 170);
+                ctx.font = 'bold 14px "Times New Roman", serif';
+                ctx.fillText("Al resolver la ecuación diferencial, se obtiene la ecuación de la línea elástica:", 140, 220);
+                ctx.font = 'bold 18px "Times New Roman", serif';
+                ctx.fillText("y(x) = C₁x + C₂", 140, 270);
+                ctx.font = 'bold 15px "Times New Roman", serif';
+                ctx.fillText("Condiciones de frontera del problema:", 140, 320);
+                ctx.fillText("• En el apoyo izquierdo (x = 0 m), la deflexión es y(0) = 0 m", 160, 370);
+                ctx.fillText("• En el apoyo derecho (x = 10 m), la deflexión es y(10) = 0.05 m", 160, 420);
+                ctx.fillText("👉 Determine únicamente el valor numérico de las constantes C₁ y C₂.", 140, 470);
+                
+                // Mostrar campo de respuesta
+                campoRespuesta.classList.remove('hidden');
+            } else {
+                campoRespuesta.classList.add('hidden');
+            }
+            
+            ctx.textAlign = 'center'; ctx.font = 'bold 14px "Press Start 2P"'; ctx.fillStyle = '#FFF';
+            ctx.fillText("", canvas.width/2, 120);
+            let puertaCercana = null, indicePuerta = -1;
+            for(let i=0; i < puertasEdificio.length; i++){
+                const p = puertasEdificio[i];
+                const distancia = Math.abs(ingeniero.x - p.centroX);
+                if(distancia < distanciaInteraccion && !p.enMovimiento){ 
+                    puertaCercana = p; 
+                    indicePuerta = i; 
+                    break; 
+                }
+            }
+            if(puertaCercana){
+                ctx.font = 'bold 12px "Press Start 2P"'; ctx.fillStyle = '#FFCC00';
+                if (indicePuerta === 0) {
+                    ctx.fillText(puertaCercana.abierta ? "Volver (E)" : "Abrir (F)", ingeniero.x + 12, ingeniero.y - 20);
+                } else {
+                    ctx.fillText(puertaCercana.abierta ? "Abierta" : "Abrir (F)", ingeniero.x + 12, ingeniero.y - 20);
+                }
+            }
+            dibujarIngeniero();
+        }
+        
+        function dibujarTractor() {
+            ctx.save();
+            const offsetX = tractor.direccion < 0 ? 0 : tractor.ancho * tractor.direccion;
+            ctx.translate(tractor.x + offsetX, tractor.y);
+            ctx.scale(tractor.direccion, 1);
+            ctx.lineJoin = 'miter'; ctx.lineCap = 'butt';
+            const baseBrazoX = 25;
+            const anguloRad = tractor.anguloBrazo * Math.PI / 180;
+            const largoBrazo1 = 60, largoBrazo2 = 45;
+            const brazo1FinX = baseBrazoX - Math.cos(anguloRad) * largoBrazo1;
+            const brazo1FinY = 0 - Math.sin(anguloRad) * largoBrazo1;
+            const anguloRad2 = anguloRad + 0.2;
+            const brazo2FinX = brazo1FinX - Math.cos(anguloRad2) * largoBrazo2;
+            const brazo2FinY = brazo1FinY - Math.sin(anguloRad2) * largoBrazo2;
+            ctx.lineWidth = 10; ctx.strokeStyle = '#E69E22'; ctx.fillStyle = '#FFCB00';
+            ctx.beginPath(); ctx.moveTo(baseBrazoX, 0); ctx.lineTo(brazo1FinX, brazo1FinY); ctx.lineTo(brazo2FinX, brazo2FinY); ctx.stroke();
+            ctx.fillStyle = '#888'; ctx.beginPath(); ctx.arc(brazo1FinX, brazo1FinY, 4, 0, Math.PI*2); ctx.fill();
+            ctx.beginPath(); ctx.arc(brazo2FinX, brazo2FinY, 4, 0, Math.PI*2); ctx.fill();
+            ctx.fillStyle = '#888'; ctx.strokeStyle = '#121212'; ctx.lineWidth = 2;
+            ctx.beginPath();
+            ctx.moveTo(brazo2FinX, brazo2FinY);
+            ctx.lineTo(brazo2FinX - 26, brazo2FinY + 4);
+            ctx.lineTo(brazo2FinX - 18, brazo2FinY + 24);
+            ctx.lineTo(brazo2FinX + 14, brazo2FinY + 20);
+            ctx.lineTo(brazo2FinX + 10, brazo2FinY - 2);
+            ctx.closePath(); ctx.fill(); ctx.stroke();
+            ctx.fillStyle = '#888';
+            ctx.fillRect(brazo2FinX - 20, brazo2FinY + 22, 4, 8);
+            ctx.fillRect(brazo2FinX - 10, brazo2FinY + 24, 4, 8);
+            ctx.fillRect(brazo2FinX - 0, brazo2FinY + 25, 4, 8);
+            ctx.fillRect(brazo2FinX + 10, brazo2FinY + 23, 4, 8);
+            ctx.fillStyle = '#121212';
+            ctx.beginPath(); ctx.arc(45, 25, 28, 0, Math.PI*2); ctx.fill();
+            ctx.beginPath(); ctx.arc(135, 25, 28, 0, Math.PI*2); ctx.fill();
+            ctx.fillStyle = '#888';
+            ctx.beginPath(); ctx.arc(45, 25, 15, 0, Math.PI*2); ctx.fill();
+            ctx.beginPath(); ctx.arc(135, 25, 15, 0, Math.PI*2); ctx.fill();
+            ctx.fillStyle = '#FFCB00'; ctx.fillRect(20, -35, 130, 55);
+            ctx.fillStyle = '#FFE04D'; ctx.fillRect(25, -30, 120, 8);
+            ctx.fillStyle = '#E69E00'; ctx.fillRect(25, 10, 120, 8);
+            ctx.strokeStyle = '#121212'; ctx.lineWidth = 2; ctx.strokeRect(20, -35, 130, 55);
+            ctx.fillStyle = '#0077ED'; ctx.fillRect(55, -60, 55, 40);
+            ctx.fillStyle = '#66B2FF'; ctx.fillRect(63, -52, 40, 22);
+            ctx.strokeRect(55, -60, 55, 40);
+            if(ingeniero.enMaquina){
+                ctx.fillStyle = '#FFDBAC'; ctx.fillRect(67, -50, 22, 20);
+                ctx.fillStyle = '#FFF'; ctx.fillRect(65, -58, 26, 8);
+                ctx.fillStyle = '#000'; ctx.fillRect(71, -46, 2, 2); ctx.fillRect(79, -46, 2, 2);
+            }
+            ctx.restore();
+        }
+        function dibujarIngeniero() {
+            ctx.save();
+            ctx.translate(ingeniero.x, ingeniero.y);
+            let cuadroAnim = 0;
+            if(ingeniero.estado === 'izquierda' || ingeniero.estado === 'derecha'){
+                cuadroAnim = Math.floor(ingeniero.frameAnimacion / 8) % 4;
+            }
+            if(ingeniero.estado === 'izquierda') ctx.scale(-1, 1);
+            else ctx.scale(1, 1);
+
+            // SOMBRERO BLANCO
+            ctx.fillStyle = '#FFFFFF';
+            ctx.fillRect(-2, 0, 20, 6);
+            ctx.fillRect(1, -4, 14, 6);
+
+            // CABEZA
+            ctx.fillStyle = '#FFDBAC';
+            ctx.fillRect(0, 4, 16, 12);
+            // OJOS
+            ctx.fillStyle = '#000000';
+            ctx.fillRect(2, 7, 4, 4);
+            ctx.fillRect(11, 7, 4, 4);
+
+            // CUERPO ROJO
+            ctx.fillStyle = '#FF2222';
+            ctx.fillRect(-2, 16, 20, 10);
+
+            // BRAZOS
+            ctx.fillStyle = '#FFDBAC';
+            ctx.fillRect(-4, 16, 4, 8);
+            ctx.fillRect(16, 16, 4, 8);
+
+            // PANTALÓN AZUL
+            ctx.fillStyle = '#0055FF';
+            ctx.fillRect(0, 26, 16, 12);
+
+            // PIERNAS ANIMADAS
+            if(cuadroAnim === 1 || cuadroAnim === 3) {
+                ctx.fillRect(2, 38, 4, 8);
+                ctx.fillRect(10, 36, 4, 10);
+            } else {
+                ctx.fillRect(2, 36, 4, 10);
+                ctx.fillRect(10, 38, 4, 8);
+            }
+
+            ctx.restore();
+        }
+        function bucleJuego() {
+            actualizar();
+            dibujar();
+            requestAnimationFrame(bucleJuego);
+        }
+        bucleJuego();
+    </script>
+</body>
+</html>
